@@ -910,6 +910,56 @@ async function checkCommandAccessible(command) {
 }
 
 /**
+ * Start the Copilot SDK headless sidecar server, retrying startup failures (e.g. the
+ * server process crashing or exiting before it starts listening) with the same
+ * exponential backoff configuration used for the rest of the harness retry loop.
+ *
+ * The sidecar starts before the unified `runHarnessRetryLoop` in `main()`, so without its
+ * own retry budget a transient startup crash (for example a native SIGABRT while the
+ * bundled Copilot CLI binary is booting) would propagate straight to the top-level catch
+ * and fail the entire run with zero retries.
+ *
+ * @param {{
+ *   command: string,
+ *   env?: NodeJS.ProcessEnv,
+ *   serverArgs?: string[],
+ *   logger: (message: string) => void,
+ *   maxRetries: number,
+ *   initialDelayMs: number,
+ *   backoffMultiplier: number,
+ *   maxDelayMs: number,
+ *   startServer?: typeof startCopilotSDKServer,
+ *   sleepFn?: (ms: number) => Promise<void>,
+ * }} options
+ * @returns {Promise<Awaited<ReturnType<typeof startCopilotSDKServer>>>}
+ */
+async function startCopilotSDKServerWithRetry(options) {
+  const { command, env, serverArgs, logger, maxRetries, initialDelayMs, backoffMultiplier, maxDelayMs } = options;
+  const startServer = options.startServer ?? startCopilotSDKServer;
+  const sleepFn = options.sleepFn ?? sleep;
+  let delay = initialDelayMs;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      logger(`copilot-sdk driver mode: sidecar startup retry ${attempt}/${maxRetries}: sleeping ${delay}ms before next attempt`);
+      await sleepFn(delay);
+      delay = Math.min(delay * backoffMultiplier, maxDelayMs);
+    }
+    logger(`copilot-sdk driver mode: starting sidecar command=${command} args=${(serverArgs ?? []).length} attempt=${attempt + 1}`);
+    try {
+      return await startServer({ command, env, serverArgs, logger });
+    } catch (sidecarError) {
+      logger(`copilot-sdk driver mode: sidecar startup failed on attempt ${attempt + 1}: ${getErrorMessage(sidecarError)}`);
+      if (attempt === maxRetries) {
+        throw sidecarError;
+      }
+    }
+  }
+  // Unreachable: the loop above always returns or throws by the time attempt === maxRetries.
+  throw new Error("copilot-sdk driver mode: sidecar startup retry loop exited unexpectedly");
+}
+
+/**
  * Parse GH_AW_COPILOT_SDK_SERVER_ARGS for SDK driver mode.
  * Returns [] when unset or invalid so sidecar defaults remain available.
  *
@@ -1203,13 +1253,35 @@ async function main() {
           driverServerArgs = [...driverServerArgs, "--add-dir", process.env.GITHUB_WORKSPACE];
           log(`copilot-sdk driver mode: appended workspace --add-dir ${process.env.GITHUB_WORKSPACE}`);
         }
-        log(`copilot-sdk driver mode: starting sidecar command=${copilotBin} args=${driverServerArgs.length}`);
-        copilotSDKServer = await startCopilotSDKServer({
-          command: copilotBin,
-          env: childEnv ?? process.env,
-          serverArgs: driverServerArgs.length > 0 ? driverServerArgs : undefined,
-          logger: log,
-        });
+        // The sidecar startup happens before the unified retry loop below, so a crash here
+        // (e.g. a native SIGABRT while the bundled Copilot CLI binary is booting up — observed
+        // to happen sporadically before the server ever starts listening) would otherwise
+        // propagate straight to the top-level catch and fail the run with zero retries. Give
+        // sidecar startup its own bounded retry budget using the same backoff configuration as
+        // the rest of the harness so a transient startup crash doesn't fail the entire run.
+        let sidecarDelay = initialDelayMs;
+        for (let sidecarAttempt = 0; sidecarAttempt <= maxRetries; sidecarAttempt++) {
+          if (sidecarAttempt > 0) {
+            log(`copilot-sdk driver mode: sidecar startup retry ${sidecarAttempt}/${maxRetries}: sleeping ${sidecarDelay}ms before next attempt`);
+            await sleep(sidecarDelay);
+            sidecarDelay = Math.min(sidecarDelay * backoffMultiplier, maxDelayMs);
+          }
+          log(`copilot-sdk driver mode: starting sidecar command=${copilotBin} args=${driverServerArgs.length} attempt=${sidecarAttempt + 1}`);
+          try {
+            copilotSDKServer = await startCopilotSDKServer({
+              command: copilotBin,
+              env: childEnv ?? process.env,
+              serverArgs: driverServerArgs.length > 0 ? driverServerArgs : undefined,
+              logger: log,
+            });
+            break;
+          } catch (sidecarError) {
+            log(`copilot-sdk driver mode: sidecar startup failed on attempt ${sidecarAttempt + 1}: ${getErrorMessage(sidecarError)}`);
+            if (sidecarAttempt === maxRetries) {
+              throw sidecarError;
+            }
+          }
+        }
       }
     }
 
