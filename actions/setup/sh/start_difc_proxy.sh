@@ -104,6 +104,6 @@ done
 
 if [ "$PROXY_READY" = "false" ]; then
   echo "::warning::DIFC proxy failed to start, falling back to direct API access"
-  docker logs awmg-proxy 2>&1 | tail -20 || true
+  docker logs awmg-proxy 2>&1 | tail -20 | bash "${SCRIPT_DIR}/render_log_to_stdout.sh" "DIFC proxy container logs" || true
   docker rm -f awmg-proxy 2>/dev/null || true
 fi

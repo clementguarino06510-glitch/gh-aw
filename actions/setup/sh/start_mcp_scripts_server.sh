@@ -6,6 +6,21 @@ set +o histexpand
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_RENDERER="${SCRIPT_DIR}/render_log_to_stdout.sh"
+
+# Prints the server log contents inside a GitHub Actions log group with
+# workflow commands disabled, so untrusted server output (e.g. tool output
+# echoed via DEBUG logging) cannot inject workflow commands into the run.
+print_server_log() {
+  local log_file="$1"
+  if [ -s "$log_file" ]; then
+    bash "$LOG_RENDERER" "Server Log Contents" < "$log_file"
+  else
+    echo "Server log: (empty)"
+  fi
+}
+
 cd ${RUNNER_TEMP}/gh-aw/mcp-scripts || exit 1
 
 # Verify required files exist
@@ -96,7 +111,7 @@ for i in {1..10}; do
   if ! kill -0 $SERVER_PID 2>/dev/null; then
     echo "ERROR: Server process $SERVER_PID has died"
     echo "Server log contents:"
-    cat /tmp/gh-aw/mcp-scripts/logs/server.log
+    print_server_log /tmp/gh-aw/mcp-scripts/logs/server.log
     exit 1
   fi
   
@@ -105,9 +120,7 @@ for i in {1..10}; do
     echo "MCP Scripts server is ready (attempt $i/10)"
     
     # Print the startup log for debugging
-    echo "::group::Server Log Contents"
-    cat /tmp/gh-aw/mcp-scripts/logs/server.log
-    echo "::endgroup::"
+    print_server_log /tmp/gh-aw/mcp-scripts/logs/server.log
     
     break
   fi
@@ -116,7 +129,7 @@ for i in {1..10}; do
     echo "ERROR: MCP Scripts server failed to start after 10 seconds"
     echo "Process status: $(pgrep -f 'mcp-server.cjs' || echo 'not running')"
     echo "Server log contents:"
-    cat /tmp/gh-aw/mcp-scripts/logs/server.log
+    print_server_log /tmp/gh-aw/mcp-scripts/logs/server.log
     echo "Checking port availability:"
     netstat -tuln | grep "$GH_AW_MCP_SCRIPTS_PORT" || echo "Port $GH_AW_MCP_SCRIPTS_PORT not listening"
     exit 1

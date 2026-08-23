@@ -89,7 +89,7 @@ done
 
 if [ "$PROXY_READY" = "false" ]; then
   echo "::error::CLI proxy failed to start within 30s"
-  docker logs awmg-cli-proxy 2>&1 | tail -20 || true
+  docker logs awmg-cli-proxy 2>&1 | tail -20 | bash "${SCRIPT_DIR}/render_log_to_stdout.sh" "CLI proxy container logs" || true
   docker rm -f awmg-cli-proxy 2>/dev/null || true
   exit 1
 fi
