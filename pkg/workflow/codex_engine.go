@@ -254,6 +254,13 @@ func (e *CodexEngine) GetDeclaredOutputFiles() []string {
 	}
 }
 
+// GetSandboxWritePaths declares the additional Cloud Hypervisor filesystem.allowWrite
+// path Codex needs beyond the common defaults. Codex writes runtime state under
+// CODEX_HOME, which resolves under the mcp-config directory.
+func (e *CodexEngine) GetSandboxWritePaths() []string {
+	return []string{constants.TmpMcpConfigDir}
+}
+
 // GetAgentManifestFiles returns Codex-specific instruction files that should be
 // treated as security-sensitive manifests.  AGENTS.md is the primary OpenAI
 // Codex agent-instruction file; modifying it can redirect agent behaviour.

@@ -313,6 +313,17 @@ type AgentFileProvider interface {
 	GetAgentManifestPathPrefixes() []string
 }
 
+// SandboxWritePathProvider is an optional interface implemented by engines that write
+// runtime state to paths beyond the common defaults (workspace, agent logs directory)
+// that ensureDefaultAgentWritePath seeds for every engine. Declaring these paths here
+// keeps each engine as the single source of truth for the Cloud Hypervisor
+// filesystem.allowWrite entries it needs, instead of branching on engine.ID in sandbox.go.
+type SandboxWritePathProvider interface {
+	// GetSandboxWritePaths returns additional paths that must remain writable under the
+	// Cloud Hypervisor runtime's filesystem.allowWrite policy.
+	GetSandboxWritePaths() []string
+}
+
 // ConfigRenderer is an optional hook that runtimes may implement to emit generated
 // config files or metadata before execution steps run.
 type ConfigRenderer interface {

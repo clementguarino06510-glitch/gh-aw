@@ -157,6 +157,12 @@ func (e *CopilotEngine) GetDeclaredOutputFiles() []string {
 	return []string{logsFolder}
 }
 
+// GetSandboxWritePaths declares the additional Cloud Hypervisor filesystem.allowWrite
+// path Copilot needs beyond the common defaults: its own agent logs directory.
+func (e *CopilotEngine) GetSandboxWritePaths() []string {
+	return []string{defaultAgentLogsWritePath}
+}
+
 // GetAgentManifestFiles returns instruction files that should be treated as
 // security-sensitive manifests to protect against injection attacks in fork PRs.
 // AGENTS.md is the cross-engine convention read by Copilot.

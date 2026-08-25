@@ -16,7 +16,6 @@ package workflow
 import (
 	"slices"
 
-	"github.com/github/gh-aw/pkg/constants"
 	"github.com/github/gh-aw/pkg/logger"
 	"github.com/github/gh-aw/pkg/sliceutil"
 )
@@ -324,15 +323,30 @@ func ensureDefaultAgentWritePath(sandboxConfig *SandboxConfig, engineConfig *Eng
 		sandboxConfig.Agent.Config.Filesystem = &SRTFilesystemConfig{}
 	}
 	addAllowWritePathIfMissing(sandboxConfig.Agent.Config.Filesystem, defaultAgentWorkspaceWritePath)
-	if engineConfig != nil && engineConfig.ID == string(constants.CopilotEngine) {
-		addAllowWritePathIfMissing(sandboxConfig.Agent.Config.Filesystem, defaultAgentLogsWritePath)
-	}
-	if engineConfig != nil && engineConfig.ID == string(constants.CodexEngine) {
-		// Codex writes runtime state under CODEX_HOME.
-		addAllowWritePathIfMissing(sandboxConfig.Agent.Config.Filesystem, constants.TmpMcpConfigDir)
+	for _, path := range engineDeclaredWritePaths(engineConfig) {
+		addAllowWritePathIfMissing(sandboxConfig.Agent.Config.Filesystem, path)
 	}
 	addAllowWritePathIfMissing(sandboxConfig.Agent.Config.Filesystem, cloudHypervisorWorkspaceWritePath)
 	addAllowWritePathIfMissing(sandboxConfig.Agent.Config.Filesystem, cloudHypervisorAwfHomeWritePath)
+}
+
+// engineDeclaredWritePaths resolves the engine identified by engineConfig.ID and returns
+// the additional filesystem.allowWrite paths it declares via SandboxWritePathProvider.
+// Looking this up from engine metadata keeps each engine as the single source of truth
+// for the runtime-state directories it writes to, rather than branching on engine.ID here.
+func engineDeclaredWritePaths(engineConfig *EngineConfig) []string {
+	if engineConfig == nil || engineConfig.ID == "" {
+		return nil
+	}
+	engine, err := GetGlobalEngineRegistry().GetEngine(engineConfig.ID)
+	if err != nil {
+		return nil
+	}
+	provider, ok := engine.(SandboxWritePathProvider)
+	if !ok {
+		return nil
+	}
+	return provider.GetSandboxWritePaths()
 }
 
 // ensureCacheMemoryWritePaths adds compiler-provisioned cache directories to the
