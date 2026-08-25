@@ -311,19 +311,41 @@ func TestGitHubConfigParsing(t *testing.T) {
 		}
 
 		t.Run("rejects malformed repository scopes", func(t *testing.T) {
-			toolsMap := map[string]any{
-				"github": map[string]any{"allowed-repos": []any{"owner/repo", 42}},
+			tests := []struct {
+				name  string
+				value any
+				want  string
+			}{
+				{
+					name:  "unsupported scalar",
+					value: 42,
+					want:  "github.allowed-repos: repository scope must be a string or array of strings, got int",
+				},
+				{
+					name:  "mixed array",
+					value: []any{"owner/repo", 42},
+					want:  "github.allowed-repos: repository scope entries must be strings, got int",
+				},
 			}
-			const want = "github.allowed-repos: repository scope entries must be strings, got int"
 
-			tools := NewTools(toolsMap)
-			if err := validateGitHubGuardPolicy(tools, "test-workflow"); err == nil || err.Error() != want {
-				t.Errorf("validateGitHubGuardPolicy() error = %v, want %q", err, want)
-			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					toolsMap := map[string]any{
+						"github": map[string]any{
+							"allowed-repos": tt.value,
+							"min-integrity": "approved",
+						},
+					}
 
-			_, err := ParseToolsConfig(toolsMap)
-			if err == nil || err.Error() != want {
-				t.Errorf("ParseToolsConfig() error = %v, want %q", err, want)
+					tools := NewTools(toolsMap)
+					if err := validateGitHubGuardPolicy(tools, "test-workflow"); err == nil || err.Error() != tt.want {
+						t.Errorf("validateGitHubGuardPolicy() error = %v, want %q", err, tt.want)
+					}
+
+					if _, err := ParseToolsConfig(toolsMap); err == nil || err.Error() != tt.want {
+						t.Errorf("ParseToolsConfig() error = %v, want %q", err, tt.want)
+					}
+				})
 			}
 		})
 	})
