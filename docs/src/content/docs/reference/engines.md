@@ -228,6 +228,22 @@ network:
     - openrouter.ai
 ```
 
+[OrcaRouter](https://www.orcarouter.ai) is an OpenAI- and Anthropic-compatible gateway that follows the same pattern. Point `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` at `https://api.orcarouter.ai/v1`, set `ORCAROUTER_API_KEY`, and reference models by their `provider/model` slug (for example `anthropic/claude-sonnet-5`):
+
+```yaml wrap
+engine:
+  id: claude
+  env:
+    ANTHROPIC_BASE_URL: "https://api.orcarouter.ai/v1"
+    ANTHROPIC_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+model: anthropic/claude-sonnet-5
+
+network:
+  allowed:
+    - defaults
+    - api.orcarouter.ai
+```
+
 If the custom provider also rejects requests because of proxy-side model steering, disable it with [`sandbox.agent.token-steering: false`](/gh-aw/reference/sandbox/#token-steering-sandboxagenttoken-steering).
 
 ### Copilot Bring Your Own Key (BYOK) Mode
